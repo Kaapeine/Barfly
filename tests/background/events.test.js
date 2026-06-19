@@ -9,7 +9,8 @@ import {
   handleBookmarkMoved,
   handleBookmarkChanged,
   handleBookmarkRemoved,
-} from "../../src/background/events.js";
+  applyCapacityChange,
+} from '../../src/background/events.js';
 
 // ---------------------------------------------------------------------------
 // Sub-task 4a: rebuildFromToolbar
@@ -310,5 +311,38 @@ describe("handleBookmarkRemoved", () => {
     const next = await handleBookmarkRemoved(api, state, "unknown-id");
 
     expect(next).toEqual(state);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 5: Capacity change handling
+// ---------------------------------------------------------------------------
+describe("applyCapacityChange", () => {
+  it("evicts from the dynamic tail when capacity shrinks", async () => {
+    const api = createFakeBrowserApi();
+    const state = await runInstall(api);
+    const a = await api.createBookmark({ parentId: "folder", title: "A", url: "https://a.test" });
+    const b = await api.createBookmark({ parentId: "folder", title: "B", url: "https://b.test" });
+    let current = await handleBookmarkCreated(api, state, a.id, a);
+    current = await handleBookmarkCreated(api, current, b.id, b);
+
+    const next = await applyCapacityChange(api, current, 1);
+
+    expect(next.capacity).toBe(1);
+    expect(next.entries).toHaveLength(1);
+    const toolbar = await api.getChildren(TOOLBAR_ID);
+    expect(toolbar.filter((c) => c.type === "bookmark")).toHaveLength(1);
+  });
+
+  it("does nothing extra when capacity grows", async () => {
+    const api = createFakeBrowserApi();
+    const state = await runInstall(api);
+    const a = await api.createBookmark({ parentId: "folder", title: "A", url: "https://a.test" });
+    let current = await handleBookmarkCreated(api, state, a.id, a);
+
+    const next = await applyCapacityChange(api, current, 50);
+
+    expect(next.capacity).toBe(50);
+    expect(next.entries).toHaveLength(1);
   });
 });

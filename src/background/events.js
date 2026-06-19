@@ -190,3 +190,27 @@ export async function handleBookmarkRemoved(api, state, id) {
   entries.splice(entryIdx, 1);
   return { ...state, entries };
 }
+
+// ---------------------------------------------------------------------------
+// 5: Capacity change handling
+// ---------------------------------------------------------------------------
+
+export async function applyCapacityChange(api, state, newCapacity) {
+  if (newCapacity >= state.capacity) {
+    return { ...state, capacity: newCapacity };
+  }
+
+  const children = await api.getChildren(TOOLBAR_ID);
+  const separatorIndex = children.findIndex((c) => c.id === state.separatorId);
+  const dynamicChildren = children.slice(separatorIndex + 1);
+
+  let entries = [...state.entries];
+  while (dynamicChildren.length > newCapacity) {
+    const tail = dynamicChildren.pop();
+    await api.removeBookmark(tail.id);
+    const idx = entries.findIndex((e) => e.duplicateId === tail.id);
+    if (idx !== -1) entries.splice(idx, 1);
+  }
+
+  return { ...state, capacity: newCapacity, entries };
+}
