@@ -1,5 +1,4 @@
-import { TOOLBAR_ID, OTHER_ID } from "../platform/firefox-browser-api.js";
-import { createDefaultState } from "../core/state.js";
+import { TOOLBAR_ID, OTHER_ID } from '../platform/firefox-browser-api.js';
 
 function formatDate(date) {
   return date.toISOString().slice(0, 10);
@@ -15,7 +14,7 @@ export async function runInstall(api, now = new Date()) {
     const archiveFolder = await api.createBookmark({
       parentId: OTHER_ID,
       title: `Bookmarks Toolbar archived on ${formatDate(now)}`,
-      type: "folder",
+      type: 'folder',
     });
     for (const child of toolbarChildren) {
       await api.moveBookmark(child.id, { parentId: archiveFolder.id });
@@ -25,10 +24,10 @@ export async function runInstall(api, now = new Date()) {
   const separator = await api.createBookmark({
     parentId: TOOLBAR_ID,
     index: 0,
-    type: "separator",
+    type: 'separator',
   });
 
-  const state = createDefaultState({ separatorId: separator.id });
+  const state = { separatorId: separator.id, capacity: 10, entries: [] };
   await api.setState(state);
   return state;
 }
