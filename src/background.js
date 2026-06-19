@@ -16,14 +16,27 @@ import {
 
 const guard = createSuppressionGuard();
 let state;
+let setupError = null;
 
 // One-time initialization: install, then sync state with the toolbar
 const ready = guard.run(async () => {
-  state = await runInstall(api);
-  const entries = await rebuildFromToolbar(api, state);
-  if (entries.length > 0) {
-    state = { ...state, entries };
-    await api.setState(state);
+  try {
+    state = await runInstall(api);
+    const entries = await rebuildFromToolbar(api, state);
+    if (entries.length > 0) {
+      state = { ...state, entries };
+      await api.setState(state);
+    }
+
+    // Register context menu (done inside ready so errors don't block listeners)
+    await browser.contextMenus.create({
+      id: "bookmark-bar-lru-toggle-pin",
+      title: "Pin to bar",
+      contexts: ["bookmark"],
+    });
+  } catch (err) {
+    setupError = err;
+    console.error("BarFly setup error:", err);
   }
 });
 
@@ -78,13 +91,8 @@ api.onBookmarkRemoved(async (id, removeInfo) => {
 
 // ---------------------------------------------------------------------------
 // Context menu: toggle pin / unpin
+// (menu item created inside ready() in initialization above)
 // ---------------------------------------------------------------------------
-
-browser.contextMenus.create({
-  id: "bookmark-bar-lru-toggle-pin",
-  title: "Pin to bar",
-  contexts: ["bookmark"],
-});
 
 // Update menu title based on whether the clicked bookmark is pinned or dynamic
 browser.contextMenus.onShown.addListener(async (info) => {
