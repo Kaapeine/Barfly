@@ -1,0 +1,20 @@
+{
+  "manifest_version": 2,
+  "name": "Bookmark Bar LRU Manager",
+  "version": "0.1.0",
+  "description": "Keeps the bookmarks toolbar limited to pinned items plus a recency-capped dynamic list.",
+  "permissions": [
+    "bookmarks",
+    "history",
+    "storage",
+    "contextMenus"
+  ],
+  "background": {
+    "scripts": ["src/background.js"],
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  }
+}

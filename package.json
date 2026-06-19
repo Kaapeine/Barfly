@@ -1,0 +1,15 @@
+{
+  "name": "bookmark-bar-lru",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "web-ext run"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0",
+    "web-ext": "^7.11.0"
+  }
+}
