@@ -49,9 +49,8 @@ export async function rebuildFromToolbar(api, state) {
   // Separator missing — recreate at index 0, prompt user to position it
   if (separatorIndex === -1) {
     try {
-      await browser.notifications.create({
+      await api.createNotification({
         type: "basic",
-        iconUrl: "icons/icon-48.png",
         title: "BarFly",
         message: "The bookmarks toolbar separator was missing and has been recreated. Drag it to your preferred position.",
       });
@@ -204,9 +203,8 @@ export async function handleBookmarkRemoved(api, state, id) {
       type: "separator",
     });
     try {
-      await browser.notifications.create({
+      await api.createNotification({
         type: "basic",
-        iconUrl: "icons/icon-48.png",
         title: "BarFly",
         message: "The bookmarks toolbar separator was recreated. Drag it to your preferred position to split pinned and dynamic bookmarks.",
       });

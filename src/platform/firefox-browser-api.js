@@ -66,3 +66,63 @@ export async function getState() {
 export function setState(state) {
   return browser.storage.local.set({ state });
 }
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+export function createNotification(options) {
+  return browser.notifications.create(options);
+}
+
+// ---------------------------------------------------------------------------
+// Context menus
+// ---------------------------------------------------------------------------
+
+export function createContextMenu(options) {
+  return browser.contextMenus.create(options);
+}
+
+export function updateContextMenu(id, options) {
+  return browser.contextMenus.update(id, options);
+}
+
+export function refreshContextMenu() {
+  return browser.contextMenus.refresh();
+}
+
+export function onContextMenuShown(callback) {
+  browser.contextMenus.onShown.addListener(callback);
+}
+
+export function onContextMenuClicked(callback) {
+  browser.contextMenus.onClicked.addListener(callback);
+}
+
+// ---------------------------------------------------------------------------
+// Messaging
+// ---------------------------------------------------------------------------
+
+export function onMessage(callback) {
+  browser.runtime.onMessage.addListener(callback);
+}
+
+export function sendMessage(message) {
+  return browser.runtime.sendMessage(message);
+}
+
+// ---------------------------------------------------------------------------
+// Storage
+// ---------------------------------------------------------------------------
+
+export function clearStorage() {
+  return browser.storage.local.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Tree operations
+// ---------------------------------------------------------------------------
+
+export function removeTree(id) {
+  return browser.bookmarks.removeTree(id);
+}

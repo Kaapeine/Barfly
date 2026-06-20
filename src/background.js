@@ -23,25 +23,15 @@ let paused = false;
 // On every background-script load: handle 4 cases based on state & separator
 const ready = guard.run(async () => {
   try {
-    const { state: resolved, notifications } = await resolveInitState(api, {
-      runInstall,
-    });
+    const { state: resolved } = await resolveInitState(api, { runInstall });
     state = resolved;
-
-    for (const notification of notifications) {
-      try {
-        await browser.notifications.create(notification);
-      } catch {
-        // notifications not supported
-      }
-    }
 
     const result = await rebuildFromToolbar(api, state);
     state = { ...result.state, entries: result.entries };
     await api.setState(state);
 
     // Register context menu (done inside ready so errors don't block listeners)
-    await browser.contextMenus.create({
+    await api.createContextMenu({
       id: "bookmark-bar-lru-toggle-pin",
       title: "Pin to bar",
       contexts: ["bookmark"],
@@ -102,14 +92,14 @@ api.onBookmarkRemoved(async (id, removeInfo) => {
 // ---------------------------------------------------------------------------
 
 // Update menu title based on whether the clicked bookmark is pinned or dynamic
-browser.contextMenus.onShown.addListener(async (info) => {
+api.onContextMenuShown(async (info) => {
   if (info.menuIds.indexOf('bookmark-bar-lru-toggle-pin') === -1) return;
   const title = await getContextMenuTitle(api, state, info.bookmarkId);
-  browser.contextMenus.update('bookmark-bar-lru-toggle-pin', { title });
-  browser.contextMenus.refresh();
+  api.updateContextMenu('bookmark-bar-lru-toggle-pin', { title });
+  api.refreshContextMenu();
 });
 
-browser.contextMenus.onClicked.addListener(async (info) => {
+api.onContextMenuClicked(async (info) => {
   if (info.menuItemId !== 'bookmark-bar-lru-toggle-pin') return;
   await guard.run(async () => {
     state = await handleContextMenuTogglePin(api, state, info.bookmarkId);
@@ -121,7 +111,7 @@ browser.contextMenus.onClicked.addListener(async (info) => {
 // Options / messaging
 // ---------------------------------------------------------------------------
 
-browser.runtime.onMessage.addListener(async (message) => {
+api.onMessage(async (message) => {
   return guard.run(async () => {
     switch (message.type) {
       case 'getSettings':

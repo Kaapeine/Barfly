@@ -15,7 +15,7 @@ import { TOOLBAR_ID } from "../platform/firefox-browser-api.js";
  * @param {object} api - Browser API adapter
  * @param {object} deps
  * @param {Function} deps.runInstall - The install function (injected so it can be mocked)
- * @returns {Promise<{state: object, notifications: object[]}>}
+ * @returns {Promise<{state: object}>}
  */
 export async function resolveInitState(api, { runInstall }) {
   const toolbarChildren = await api.getChildren(TOOLBAR_ID);
@@ -24,7 +24,7 @@ export async function resolveInitState(api, { runInstall }) {
 
   if (savedState && existingSeparator) {
     // Case 1: Normal restart
-    return { state: savedState, notifications: [] };
+    return { state: savedState };
   }
 
   if (savedState && !existingSeparator) {
@@ -34,18 +34,17 @@ export async function resolveInitState(api, { runInstall }) {
       index: 0,
       type: "separator",
     });
-    return {
-      state: { ...savedState, separatorId: separator.id },
-      notifications: [
-        {
-          type: "basic",
-          iconUrl: "icons/icon-48.png",
-          title: "BarFly",
-          message:
-            "The bookmarks toolbar separator was missing and has been recreated. Drag it to your preferred position.",
-        },
-      ],
-    };
+    try {
+      await api.createNotification({
+        type: "basic",
+        title: "BarFly",
+        message:
+          "The bookmarks toolbar separator was missing and has been recreated. Drag it to your preferred position.",
+      });
+    } catch {
+      // notifications not supported
+    }
+    return { state: { ...savedState, separatorId: separator.id } };
   }
 
   if (!savedState && existingSeparator) {
@@ -56,10 +55,10 @@ export async function resolveInitState(api, { runInstall }) {
       entries: [],
     };
     await api.setState(state);
-    return { state, notifications: [] };
+    return { state };
   }
 
   // Case 4: Fresh install
   const state = await runInstall(api);
-  return { state, notifications: [] };
+  return { state };
 }

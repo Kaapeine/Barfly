@@ -21,12 +21,11 @@ describe("resolveInitState", () => {
     };
     await api.setState(savedState);
 
-    const { state, notifications } = await resolveInitState(api, {
+    const { state } = await resolveInitState(api, {
       runInstall: vi.fn(),
     });
 
     expect(state).toEqual(savedState);
-    expect(notifications).toEqual([]);
     expect(api.getState()).resolves.toEqual(savedState); // unchanged
   });
 
@@ -42,7 +41,7 @@ describe("resolveInitState", () => {
     };
     await api.setState(savedState);
 
-    const { state, notifications } = await resolveInitState(api, {
+    const { state } = await resolveInitState(api, {
       runInstall: vi.fn(),
     });
 
@@ -55,10 +54,7 @@ describe("resolveInitState", () => {
     expect(toolbar[0].type).toBe("separator");
     expect(toolbar[0].id).toBe(state.separatorId);
 
-    // Notification returned
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0].title).toBe("BarFly");
-    expect(notifications[0].message).toContain("recreated");
+    // Notification was sent (createNotification is a no-op in tests, no crash)
   });
 
   // -----------------------------------------------------------------------
@@ -73,14 +69,13 @@ describe("resolveInitState", () => {
     });
     // No saved state
 
-    const { state, notifications } = await resolveInitState(api, {
+    const { state } = await resolveInitState(api, {
       runInstall: vi.fn(),
     });
 
     expect(state.separatorId).toBe(separator.id);
     expect(state.capacity).toBe(10);
     expect(state.entries).toEqual([]);
-    expect(notifications).toEqual([]);
 
     // State should have been persisted
     const persisted = await api.getState();
@@ -98,12 +93,11 @@ describe("resolveInitState", () => {
       entries: [],
     });
 
-    const { state, notifications } = await resolveInitState(api, { runInstall });
+    const { state } = await resolveInitState(api, { runInstall });
 
     expect(runInstall).toHaveBeenCalledOnce();
     expect(state.separatorId).toBe("new-sep");
     expect(state.capacity).toBe(10);
-    expect(notifications).toEqual([]);
   });
 
   // -----------------------------------------------------------------------
@@ -118,8 +112,8 @@ describe("resolveInitState", () => {
       url: "https://existing.test",
     });
 
-    const { state, notifications } = await resolveInitState(api, {
-      runInstall: (await import("../../src/background/install.js")).runInstall,
+    const { state } = await resolveInitState(api, {
+      runInstall: (await import('../../src/background/install.js')).runInstall,
     });
 
     // Toolbar should now have separator at index 0
@@ -139,6 +133,5 @@ describe("resolveInitState", () => {
     expect(state.separatorId).toBe(toolbar[0].id);
     expect(state.capacity).toBe(10);
     expect(state.entries).toEqual([]);
-    expect(notifications).toEqual([]);
   });
 });

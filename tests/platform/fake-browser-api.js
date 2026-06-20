@@ -17,7 +17,7 @@ export function createFakeBrowserApi() {
   }
 
   return {
-    async createBookmark({ parentId, index, title, url, type = "bookmark" }) {
+    async createBookmark({ parentId, index, title, url, type = 'bookmark' }) {
       const id = String(nextId++);
       const siblings = childrenOf(parentId);
       const at = index ?? siblings.length;
@@ -31,14 +31,16 @@ export function createFakeBrowserApi() {
     async removeBookmark(id) {
       const node = nodes.get(id);
       if (!node) return;
-      if (node.type === "folder" || node.type === undefined) {
+      if (node.type === 'folder' || node.type === undefined) {
         for (const child of childrenOf(id)) {
           await this.removeBookmark(child.id);
         }
       }
       nodes.delete(id);
       reindex(node.parentId);
-      listeners.removed.forEach((cb) => cb(id, { parentId: node.parentId, index: node.index }));
+      listeners.removed.forEach((cb) =>
+        cb(id, { parentId: node.parentId, index: node.index }),
+      );
     },
 
     async moveBookmark(id, { parentId, index }) {
@@ -59,7 +61,12 @@ export function createFakeBrowserApi() {
       reindex(parentId);
 
       listeners.moved.forEach((cb) =>
-        cb(id, { parentId: node.parentId, index: node.index, oldParentId, oldIndex })
+        cb(id, {
+          parentId: node.parentId,
+          index: node.index,
+          oldParentId,
+          oldIndex,
+        }),
       );
     },
 
@@ -79,7 +86,9 @@ export function createFakeBrowserApi() {
     },
 
     async searchBookmarksByUrl(url) {
-      return [...nodes.values()].filter((n) => n.url === url).map((n) => ({ ...n }));
+      return [...nodes.values()]
+        .filter((n) => n.url === url)
+        .map((n) => ({ ...n }));
     },
 
     onBookmarkCreated(cb) {
@@ -109,10 +118,35 @@ export function createFakeBrowserApi() {
       state = next;
     },
 
-    notifications: {
-      async create() {
-        // no-op in tests
-      },
+    async createNotification() {
+      // no-op in tests
+    },
+    async createContextMenu() {
+      // no-op in tests
+    },
+    async updateContextMenu() {
+      // no-op in tests
+    },
+    async refreshContextMenu() {
+      // no-op in tests
+    },
+    onContextMenuShown() {
+      // no-op in tests
+    },
+    onContextMenuClicked() {
+      // no-op in tests
+    },
+    onMessage() {
+      // no-op in tests
+    },
+    async sendMessage() {
+      // no-op in tests
+    },
+    async clearStorage() {
+      state = null;
+    },
+    async removeTree() {
+      // no-op in tests
     },
   };
 }
