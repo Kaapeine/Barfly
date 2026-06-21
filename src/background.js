@@ -19,6 +19,20 @@ let state;
 let paused = false;
 
 // ---------------------------------------------------------------------------
+// Module-level listeners (registered synchronously before any await)
+// ---------------------------------------------------------------------------
+
+api.onInstalled(async ({ reason }) => {
+  console.log('On Install');
+  if (reason === 'install') {
+    const setupComplete = await api.getSetupComplete();
+    if (!setupComplete) {
+      await api.openTab('src/options/release/options.html');
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
 
@@ -27,29 +41,8 @@ async function init() {
 
   if (!setupComplete) {
     // Enter setup mode — only listen for install events and setupComplete message.
-    api.onInstalled(async ({ reason }) => {
-      console.log('On Install');
-      if (reason === 'install') {
-        await api.openTab('src/options/release/options.html');
-      }
-    });
-
-    api.onMessage((message) => {
-      if (message.type !== 'setupComplete') return undefined;
-
-      // Return a promise only for the setupComplete message
-      return (async () => {
-        console.log('wizard complete');
-        state = await runInstall(api, message.capacity);
-        await api.setState(state);
-        await api.setSetupComplete(true);
-        // Register message handlers so options page can fetch settings
-        registerMessageHandlers();
-        startExtension();
-        return { ok: true };
-      })();
-    });
-
+    console.log('setup mode enter');
+    enterSetupMode();
     return;
   }
 
@@ -64,7 +57,7 @@ async function init() {
     // This shouldn't happen in practice, but if it does, re-enter setup mode.
     console.log('Case 4: no state or seperator');
     await api.setSetupComplete(false);
-    await api.openTab('src/options/release/options.html');
+    enterSetupMode();
     return;
   }
 
@@ -173,6 +166,31 @@ function registerMessageHandlers() {
           return undefined;
       }
     });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Enter setup mode — open the wizard and listen for completion
+// ---------------------------------------------------------------------------
+
+async function enterSetupMode() {
+  // Open the wizard tab
+  await api.openTab('src/options/release/options.html');
+
+  api.onMessage((message) => {
+    if (message.type !== 'setupComplete') return undefined;
+
+    // Return a promise only for the setupComplete message
+    return (async () => {
+      console.log('wizard complete');
+      state = await runInstall(api, message.capacity);
+      await api.setState(state);
+      await api.setSetupComplete(true);
+      // Register message handlers so options page can fetch settings
+      registerMessageHandlers();
+      startExtension();
+      return { ok: true };
+    })();
   });
 }
 
