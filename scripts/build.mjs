@@ -11,7 +11,10 @@ manifest.options_ui.page = 'src/options/release/options.html';
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 
 // Build with web-ext
-execSync('web-ext build --overwrite-dest', { stdio: 'inherit' });
+execSync(
+  'web-ext build --overwrite-dest --ignore-files=scripts/** tests/** docs/** node_modules/** web-ext-artifacts/** .git/** .gitignore package-lock.json package.json vitest.config.js',
+  { stdio: 'inherit' },
+);
 
 // Restore to dev options page
 manifest.options_ui.page = 'src/options/options.html';

@@ -3,13 +3,25 @@
   "name": "BarFly",
   "version": "0.1.0",
   "description": "Smart bookmarks toolbar - keeps pinned items up front, LRU-cached dynamic items after a separator.",
-  "permissions": ["bookmarks", "history", "storage", "contextMenus"],
+  "permissions": [
+    "bookmarks",
+    "history",
+    "storage",
+    "contextMenus"
+  ],
   "background": {
-    "scripts": ["src/background.js"],
+    "scripts": [
+      "src/background.js"
+    ],
     "type": "module"
   },
   "options_ui": {
     "page": "src/options/options.html",
     "open_in_tab": true
+  },
+  "applications": {
+    "gecko": {
+      "id": "borderify@mozilla.org"
+    }
   }
 }
