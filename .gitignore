@@ -2,3 +2,4 @@ node_modules
 profile/
 web-ext-artifacts/
 .DS_Store
+docs/
