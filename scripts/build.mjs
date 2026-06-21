@@ -7,7 +7,7 @@ const manifestPath = 'manifest.json';
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
 // Switch to release options page
-manifest.options_ui.page = 'src/options/release/options.html';
+manifest.options_ui.page = 'src/options/options.html';
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 
 // Build with web-ext

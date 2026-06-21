@@ -44,6 +44,11 @@ let currentStep = 0;
 
 async function loadSettings() {
   const settings = await api.sendMessage({ type: 'getSettings' });
+  if (!settings) {
+    // Background not ready yet — retry after a short delay
+    setTimeout(loadSettings, 200);
+    return;
+  }
   capacityInput.value = settings.capacity;
   await refreshState();
 }
@@ -260,16 +265,19 @@ finishBtn.addEventListener('click', async () => {
   finishBtn.textContent = 'Starting...';
 
   const capacity = Number(wizardCapacity.value) || 10;
-  await api.sendMessage({
-    type: 'setupComplete',
-    capacity,
-  });
 
-  // Hide wizard, load settings normally
-  overlay.style.display = 'none';
-  await loadSettings();
-  finishBtn.textContent = '🚀 Start BarFly';
-  finishBtn.disabled = false;
+  try {
+    await api.sendMessage({
+      type: 'setupComplete',
+      capacity,
+    });
+  } catch {
+    // Background may have restarted — the setup was already processed.
+    // Reload the page to establish a fresh connection.
+  }
+
+  // Reload to get a clean runtime connection with all listeners in place
+  window.location.reload();
 });
 
 // ---------------------------------------------------------------------------

@@ -77,7 +77,7 @@ export function createFirefoxAdapter() {
     async showAlert(message) {
       try {
         await browser.tabs.create({
-          url: `src/options/options.html?alert=${encodeURIComponent(message)}`,
+          url: `src/options/release/options.html?alert=${encodeURIComponent(message)}`,
         });
       } catch {
         // ignore

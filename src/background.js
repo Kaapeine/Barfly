@@ -30,32 +30,41 @@ async function init() {
     api.onInstalled(async ({ reason }) => {
       console.log('On Install');
       if (reason === 'install') {
-        await api.openTab('src/options/options.html');
+        await api.openTab('src/options/release/options.html');
       }
     });
 
-    api.onMessage(async (message) => {
+    api.onMessage((message) => {
       if (message.type !== 'setupComplete') return undefined;
 
-      console.log('wizard complete');
-      state = await runInstall(api, message.capacity);
-      await api.setState(state);
-      await api.setSetupComplete(true);
-      startExtension();
-      return { ok: true };
+      // Return a promise only for the setupComplete message
+      return (async () => {
+        console.log('wizard complete');
+        state = await runInstall(api, message.capacity);
+        await api.setState(state);
+        await api.setSetupComplete(true);
+        // Register message handlers so options page can fetch settings
+        registerMessageHandlers();
+        startExtension();
+        return { ok: true };
+      })();
     });
 
     return;
   }
 
   // Normal startup — setup is complete
+  // Register message handlers immediately so options page can talk to us
+  registerMessageHandlers();
+
   const { state: resolved } = await resolveInitState(api);
 
   if (!resolved) {
     // Case 4: state + separator both missing despite setupComplete flag.
     // This shouldn't happen in practice, but if it does, re-enter setup mode.
+    console.log('Case 4: no state or seperator');
     await api.setSetupComplete(false);
-    await api.openTab('src/options/options.html');
+    await api.openTab('src/options/release/options.html');
     return;
   }
 
@@ -135,13 +144,18 @@ function startExtension() {
       await api.setState(state);
     });
   });
+}
 
-  // Options / messaging
+// ---------------------------------------------------------------------------
+// Register message handlers for options page communication
+// ---------------------------------------------------------------------------
+
+function registerMessageHandlers() {
   api.onMessage(async (message) => {
     return guard.run(async () => {
       switch (message.type) {
         case 'getSettings':
-          return { capacity: state.capacity };
+          return { capacity: state?.capacity ?? 10 };
         case 'setCapacity':
           state = await applyCapacityChange(api, state, message.capacity);
           await api.setState(state);
