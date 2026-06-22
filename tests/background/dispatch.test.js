@@ -54,4 +54,28 @@ describe("createDispatcher", () => {
     await dispatcher.drain();
     expect((await dispatcher.getState()).entries).toHaveLength(0);
   });
+
+  it("does not throw when a bookmark event arrives before setup has written any state", async () => {
+    // Listeners are registered synchronously at module load, before init()'s
+    // async setup work resolves — so a bookmark/history event can arrive
+    // while state is still null (setup not finished, or not yet started).
+    // Capture the listener directly so we can await its own promise — a
+    // dispatcher.drain() call afterward wouldn't surface a rejection from an
+    // earlier, separately-queued task.
+    const api = createFakeBrowserApi();
+    let createdCb;
+    const realOnCreated = api.onBookmarkCreated.bind(api);
+    api.onBookmarkCreated = (cb) => {
+      createdCb = cb;
+      realOnCreated(cb);
+    };
+
+    const dispatcher = createDispatcher(api);
+    dispatcher.registerEventHandlers();
+
+    await expect(
+      createdCb("999", { type: "bookmark", title: "Z", url: "https://z.test", parentId: "folder" }),
+    ).resolves.toBeUndefined();
+    expect(await dispatcher.getState()).toBeNull();
+  });
 });

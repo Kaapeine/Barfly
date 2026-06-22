@@ -31,6 +31,7 @@ export function createDispatcher(api) {
         if (await api.getPaused()) return;
         if (await expected.consume(type, id)) return; // our own mutation — ignore
         const state = await api.getState();
+        if (!state) return; // setup not finished yet — nothing to update
         const next = await handler(state, ...args);
         await api.setState(next);
       });
@@ -43,6 +44,7 @@ export function createDispatcher(api) {
         queue.enqueue(async () => {
           if (await api.getPaused()) return;
           const state = await api.getState();
+          if (!state) return; // setup not finished yet — nothing to update
           const next = await handleVisit(trackingApi, state, url);
           await api.setState(next);
         }),

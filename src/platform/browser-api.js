@@ -46,4 +46,8 @@ export const {
   openTab,
   getSetupComplete,
   setSetupComplete,
+  getExpectedEvents,
+  setExpectedEvents,
+  getPaused,
+  setPaused,
 } = adapter;
