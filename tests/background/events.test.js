@@ -125,6 +125,36 @@ describe("handleVisit", () => {
     expect(nextB.entries).toHaveLength(1);
     expect(nextB.entries.map((e) => e.originalId)).toEqual([b.id]);
   });
+
+  it("bumps a duplicate even when the visited URL differs from the stored URL by a trailing slash", async () => {
+    const api = createFakeBrowserApi();
+    const state = await runInstall(api);
+    // Stored bookmark URL has no trailing slash...
+    const orig = await api.createBookmark({ parentId: "folder", title: "A", url: "https://a.test" });
+    const dupA = await api.createBookmark({ parentId: TOOLBAR_ID, title: "A", url: "https://a.test", index: 1 });
+    const dupB = await api.createBookmark({ parentId: TOOLBAR_ID, title: "B", url: "https://b.test", index: 2 });
+    const current = {
+      ...state,
+      entries: [
+        { originalId: orig.id, duplicateId: dupA.id },
+        { originalId: "b-orig", duplicateId: dupB.id },
+      ],
+    };
+
+    // Override search to model the browser matching the slash variant to the stored bookmark.
+    const realSearch = api.searchBookmarksByUrl;
+    api.searchBookmarksByUrl = async (u) =>
+      u === "https://a.test/" ? realSearch("https://a.test") : realSearch(u);
+
+    // ...but the visit arrives with a trailing slash.
+    const next = await handleVisit(api, current, "https://a.test/");
+
+    const children = await api.getChildren(TOOLBAR_ID);
+    const sepIndex = children.findIndex((c) => c.id === state.separatorId);
+    // dupA should now be first in the dynamic section.
+    expect(children[sepIndex + 1].id).toBe(dupA.id);
+    expect(next.entries[0].duplicateId).toBe(dupA.id);
+  });
 });
 
 // ---------------------------------------------------------------------------

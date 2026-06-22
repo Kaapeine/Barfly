@@ -94,20 +94,22 @@ export async function rebuildFromToolbar(api, state) {
 // ---------------------------------------------------------------------------
 
 export async function handleVisit(api, state, url) {
-  // Not a bookmarked URL — nothing to do
+  // Not a bookmarked URL — nothing to do. `matches` are the bookmarks the
+  // browser itself considers a match (it normalizes e.g. trailing slashes).
   const matches = await api.searchBookmarksByUrl(url);
   if (matches.length === 0) return state;
+  const matchIds = new Set(matches.map((m) => m.id));
 
   const children = await api.getChildren(TOOLBAR_ID);
   const separatorIndex = children.findIndex((c) => c.id === state.separatorId);
   const pinnedChildren = children.slice(0, separatorIndex);
   const dynamicChildren = children.slice(separatorIndex + 1);
 
-  // If already pinned (before separator), user manages those — skip
-  if (pinnedChildren.some((c) => c.url === url)) return state;
+  // If already pinned (before separator), the user manages those — skip.
+  if (pinnedChildren.some((c) => matchIds.has(c.id))) return state;
 
-  // If already on the toolbar as a duplicate, bump to front of dynamic section
-  const match = dynamicChildren.find((c) => c.url === url);
+  // If already on the toolbar as a duplicate, bump to front of dynamic section.
+  const match = dynamicChildren.find((c) => matchIds.has(c.id));
   if (match) {
     const entries = reorderEntries([...state.entries], match.id);
     await api.moveBookmark(match.id, { parentId: TOOLBAR_ID, index: separatorIndex + 1 });
