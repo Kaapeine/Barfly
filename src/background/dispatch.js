@@ -9,28 +9,30 @@ import {
 } from "./events.js";
 
 /**
- * Owns the mutable runtime (state + paused) and wires browser events through
- * the serial queue and self-event suppression into the pure handlers.
+ * Wires browser events through the serial queue and self-event suppression
+ * into the pure handlers. Holds no runtime state of its own — `state` and
+ * `paused` are read from and written to `api` on every single dispatch, since
+ * an MV3 service worker can be killed and respawned between any two events,
+ * silently wiping anything cached only in a JS variable.
  *
- * `api` is the raw adapter (used for listeners + setState). Handlers receive a
- * tracking wrapper so every mutation they perform is marked as expected and the
- * echoed event is ignored.
+ * `api` is the raw adapter (used for listeners + getState/setState). Handlers
+ * receive a tracking wrapper so every mutation they perform is marked as
+ * expected and the echoed event is ignored.
  */
 export function createDispatcher(api) {
   const queue = createSerialQueue();
-  const expected = createExpectedSet();
+  const expected = createExpectedSet(api);
   const trackingApi = createTrackingApi(api, expected);
-  let state = null;
-  let paused = false;
 
   function run(type, handler) {
     return (...args) =>
       queue.enqueue(async () => {
         const id = args[0];
-        if (paused) return;
-        if (expected.consume(type, id)) return; // our own mutation — ignore
-        state = await handler(...args);
-        await api.setState(state);
+        if (await api.getPaused()) return;
+        if (await expected.consume(type, id)) return; // our own mutation — ignore
+        const state = await api.getState();
+        const next = await handler(state, ...args);
+        await api.setState(next);
       });
   }
 
@@ -39,22 +41,23 @@ export function createDispatcher(api) {
       // onVisited has no id to suppress; it never reflects our own writes.
       ({ url }) =>
         queue.enqueue(async () => {
-          if (paused) return;
-          state = await handleVisit(trackingApi, state, url);
-          await api.setState(state);
+          if (await api.getPaused()) return;
+          const state = await api.getState();
+          const next = await handleVisit(trackingApi, state, url);
+          await api.setState(next);
         }),
     );
     api.onBookmarkCreated(
-      run("created", (id, node) => handleBookmarkCreated(trackingApi, state, id, node)),
+      run("created", (state, id, node) => handleBookmarkCreated(trackingApi, state, id, node)),
     );
     api.onBookmarkMoved(
-      run("moved", (id, moveInfo) => handleBookmarkMoved(trackingApi, state, id, moveInfo)),
+      run("moved", (state, id, moveInfo) => handleBookmarkMoved(trackingApi, state, id, moveInfo)),
     );
     api.onBookmarkChanged(
-      run("changed", (id, changeInfo) => handleBookmarkChanged(trackingApi, state, id, changeInfo)),
+      run("changed", (state, id, changeInfo) => handleBookmarkChanged(trackingApi, state, id, changeInfo)),
     );
     api.onBookmarkRemoved(
-      run("removed", (id) => handleBookmarkRemoved(trackingApi, state, id)),
+      run("removed", (state, id) => handleBookmarkRemoved(trackingApi, state, id)),
     );
   }
 
@@ -62,10 +65,10 @@ export function createDispatcher(api) {
     registerEventHandlers,
     queue,
     trackingApi,
-    getState: () => state,
-    setState: (s) => { state = s; },
-    setPaused: (p) => { paused = p; },
-    isPaused: () => paused,
+    getState: () => api.getState(),
+    setState: (s) => api.setState(s),
+    setPaused: (p) => api.setPaused(p),
+    isPaused: () => api.getPaused(),
     // Test/util helper: resolve once the queue has drained.
     drain: () => queue.enqueue(async () => {}),
   };

@@ -3,6 +3,8 @@ export function createFakeBrowserApi() {
   const nodes = new Map();
   const listeners = { created: [], removed: [], changed: [], moved: [], visited: [] };
   let state = null;
+  let expectedEvents = [];
+  let paused = false;
 
   function childrenOf(parentId) {
     return [...nodes.values()]
@@ -118,6 +120,20 @@ export function createFakeBrowserApi() {
       state = next;
     },
 
+    async getExpectedEvents() {
+      return expectedEvents;
+    },
+    async setExpectedEvents(next) {
+      expectedEvents = next;
+    },
+
+    async getPaused() {
+      return paused;
+    },
+    async setPaused(next) {
+      paused = next;
+    },
+
     async showAlert() {
       // no-op in tests
     },
@@ -144,6 +160,8 @@ export function createFakeBrowserApi() {
     },
     async clearStorage() {
       state = null;
+      expectedEvents = [];
+      paused = false;
     },
     async removeTree() {
       // no-op in tests

@@ -8,7 +8,7 @@ async function setup() {
   const api = createFakeBrowserApi();
   const state = await runInstall(api);
   const dispatcher = createDispatcher(api);
-  dispatcher.setState(state);
+  await dispatcher.setState(state);
   dispatcher.registerEventHandlers();
   return { api, dispatcher };
 }
@@ -21,7 +21,7 @@ describe("createDispatcher", () => {
     // rather than fabricating one by hand (which would race the dispatcher's
     // own handling of `orig`'s creation and produce a second, untracked dup).
     await dispatcher.drain();
-    const dupId = dispatcher.getState().entries[0].duplicateId;
+    const dupId = (await dispatcher.getState()).entries[0].duplicateId;
 
     let changedCount = 0;
     api.onBookmarkChanged(() => { changedCount += 1; });
@@ -44,14 +44,14 @@ describe("createDispatcher", () => {
     // duplicate's own onCreated was suppressed (no duplicate-of-duplicate).
     const dynamic = (await api.getChildren(TOOLBAR_ID)).filter((c) => c.type === "bookmark");
     expect(dynamic).toHaveLength(1);
-    expect(dispatcher.getState().entries).toHaveLength(1);
+    expect((await dispatcher.getState()).entries).toHaveLength(1);
   });
 
   it("does not process events while paused", async () => {
     const { api, dispatcher } = await setup();
-    dispatcher.setPaused(true);
+    await dispatcher.setPaused(true);
     await api.createBookmark({ parentId: "folder", title: "Y", url: "https://y.test" });
     await dispatcher.drain();
-    expect(dispatcher.getState().entries).toHaveLength(0);
+    expect((await dispatcher.getState()).entries).toHaveLength(0);
   });
 });

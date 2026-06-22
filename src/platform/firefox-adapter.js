@@ -74,6 +74,26 @@ export function createFirefoxAdapter() {
       return browser.storage.local.set({ state });
     },
 
+    // Session storage survives an MV3 service-worker restart but clears on
+    // browser restart — the right lifetime for "events we're about to cause".
+    async getExpectedEvents() {
+      const stored = await browser.storage.session.get('expectedEvents');
+      return stored.expectedEvents ?? [];
+    },
+
+    setExpectedEvents(keys) {
+      return browser.storage.session.set({ expectedEvents: keys });
+    },
+
+    async getPaused() {
+      const stored = await browser.storage.local.get('paused');
+      return stored.paused ?? false;
+    },
+
+    setPaused(value) {
+      return browser.storage.local.set({ paused: value });
+    },
+
     async showAlert(message) {
       try {
         await browser.tabs.create({

@@ -38,8 +38,7 @@ async function init() {
   }
 
   const result = await rebuildFromToolbar(api, resolved);
-  dispatcher.setState({ ...result.state, entries: result.entries });
-  await api.setState(dispatcher.getState());
+  await dispatcher.setState({ ...result.state, entries: result.entries });
   startExtension();
 }
 
@@ -61,7 +60,8 @@ function startExtension() {
   // Context menu: update title on show
   api.onContextMenuShown(async (info) => {
     if (info.menuIds.indexOf('bookmark-bar-lru-toggle-pin') === -1) return;
-    const title = await getContextMenuTitle(api, dispatcher.getState(), info.bookmarkId);
+    const state = await dispatcher.getState();
+    const title = await getContextMenuTitle(api, state, info.bookmarkId);
     api.updateContextMenu('bookmark-bar-lru-toggle-pin', { title });
     api.refreshContextMenu();
   });
@@ -69,9 +69,9 @@ function startExtension() {
   api.onContextMenuClicked(async (info) => {
     if (info.menuItemId !== 'bookmark-bar-lru-toggle-pin') return;
     await dispatcher.queue.enqueue(async () => {
-      const next = await handleContextMenuTogglePin(dispatcher.trackingApi, dispatcher.getState(), info.bookmarkId);
-      dispatcher.setState(next);
-      await api.setState(next);
+      const state = await dispatcher.getState();
+      const next = await handleContextMenuTogglePin(dispatcher.trackingApi, state, info.bookmarkId);
+      await dispatcher.setState(next);
     });
   });
 }
@@ -84,22 +84,24 @@ function registerMessageHandlers() {
   api.onMessage(async (message) => {
     return dispatcher.queue.enqueue(async () => {
       switch (message.type) {
-        case 'getSettings':
-          return { capacity: dispatcher.getState()?.capacity ?? 10 };
+        case 'getSettings': {
+          const state = await dispatcher.getState();
+          return { capacity: state?.capacity ?? 10 };
+        }
         case 'setCapacity': {
-          const next = await applyCapacityChange(dispatcher.trackingApi, dispatcher.getState(), message.capacity);
-          dispatcher.setState(next);
-          await api.setState(next);
+          const state = await dispatcher.getState();
+          const next = await applyCapacityChange(dispatcher.trackingApi, state, message.capacity);
+          await dispatcher.setState(next);
           return { ok: true };
         }
         case 'rebuild': {
-          const result = await rebuildFromToolbar(api, dispatcher.getState());
-          dispatcher.setState({ ...result.state, entries: result.entries });
-          await api.setState(dispatcher.getState());
+          const state = await dispatcher.getState();
+          const result = await rebuildFromToolbar(api, state);
+          await dispatcher.setState({ ...result.state, entries: result.entries });
           return { ok: true };
         }
         case 'setPaused':
-          dispatcher.setPaused(message.paused);
+          await dispatcher.setPaused(message.paused);
           return { ok: true };
         default:
           return undefined;
@@ -121,8 +123,7 @@ async function enterSetupMode() {
 
     // Return a promise only for the setupComplete message
     return (async () => {
-      dispatcher.setState(await runInstall(api, message.capacity));
-      await api.setState(dispatcher.getState());
+      await dispatcher.setState(await runInstall(api, message.capacity));
       await api.setSetupComplete(true);
       // Register message handlers so options page can fetch settings
       registerMessageHandlers();

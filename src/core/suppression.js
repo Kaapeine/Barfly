@@ -5,25 +5,32 @@
  * rename-sync would update the counterpart, receive the echoed onChanged, and
  * sync it back forever. We give our mutations provenance by tagging them.
  *
+ * Persisted through `api.getExpectedEvents`/`setExpectedEvents` (backed by
+ * session storage) rather than an in-memory Set, so a mark survives an MV3
+ * service-worker restart between marking a mutation and its echo arriving.
+ *
  * Keys are `"<type>:<id>"`. Bounded so a dropped/coalesced event can't leak
- * memory: oldest marks are evicted past `max`.
+ * storage: oldest marks are evicted past `max`.
  */
-export function createExpectedSet(max = 200) {
-  const keys = new Set(); // insertion-ordered
-  function mark(type, id) {
+export function createExpectedSet(api, max = 200) {
+  async function mark(type, id) {
     const key = `${type}:${id}`;
-    keys.delete(key); // refresh recency if already present
-    keys.add(key);
-    while (keys.size > max) {
-      const oldest = keys.values().next().value;
-      keys.delete(oldest);
-    }
+    const keys = (await api.getExpectedEvents()).filter((k) => k !== key);
+    keys.push(key);
+    while (keys.length > max) keys.shift();
+    await api.setExpectedEvents(keys);
   }
-  function consume(type, id) {
-    return keys.delete(`${type}:${id}`);
+  async function consume(type, id) {
+    const key = `${type}:${id}`;
+    const keys = await api.getExpectedEvents();
+    const idx = keys.indexOf(key);
+    if (idx === -1) return false;
+    keys.splice(idx, 1);
+    await api.setExpectedEvents(keys);
+    return true;
   }
-  function size() {
-    return keys.size;
+  async function size() {
+    return (await api.getExpectedEvents()).length;
   }
   return { mark, consume, size };
 }
@@ -38,19 +45,19 @@ export function createTrackingApi(api, expected) {
     ...api,
     async createBookmark(args) {
       const node = await api.createBookmark(args);
-      expected.mark("created", node.id);
+      await expected.mark("created", node.id);
       return node;
     },
-    removeBookmark(id) {
-      expected.mark("removed", id);
+    async removeBookmark(id) {
+      await expected.mark("removed", id);
       return api.removeBookmark(id);
     },
-    moveBookmark(id, dest) {
-      expected.mark("moved", id);
+    async moveBookmark(id, dest) {
+      await expected.mark("moved", id);
       return api.moveBookmark(id, dest);
     },
-    updateBookmark(id, changes) {
-      expected.mark("changed", id);
+    async updateBookmark(id, changes) {
+      await expected.mark("changed", id);
       return api.updateBookmark(id, changes);
     },
   };
