@@ -1,23 +1,28 @@
 import fs from 'fs';
 import { execSync } from 'child_process';
 
-const manifestPath = 'manifest.json';
+const optionsHtmlPath = 'src/options/options.html';
 
-// Read manifest
-const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-
-// Switch to release options page
-manifest.options_ui.page = 'src/options/options.html';
-fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-
-// Build with web-ext
-execSync(
-  'web-ext build --overwrite-dest --ignore-files=scripts/** tests/** docs/** node_modules/** web-ext-artifacts/** .git/** .gitignore package-lock.json package.json vitest.config.js',
-  { stdio: 'inherit' },
+// Strip the dev-only block (test tools + state inspector) so release builds
+// don't ship debug UI. Markers live in the HTML itself; see options.html.
+const original = fs.readFileSync(optionsHtmlPath, 'utf8');
+const stripped = original.replace(
+  /<!-- DEV-ONLY:START[\s\S]*?DEV-ONLY:END -->\n\n/,
+  '',
 );
+if (stripped === original) {
+  throw new Error(`DEV-ONLY markers not found in ${optionsHtmlPath} — refusing to build`);
+}
+fs.writeFileSync(optionsHtmlPath, stripped);
 
-// Restore to dev options page
-manifest.options_ui.page = 'src/options/options.html';
-fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+try {
+  execSync(
+    'web-ext build --overwrite-dest --ignore-files=scripts/** tests/** docs/** node_modules/** web-ext-artifacts/** .git/** .gitignore package-lock.json package.json vitest.config.js',
+    { stdio: 'inherit' },
+  );
+} finally {
+  // Always restore the dev version, even if the build fails.
+  fs.writeFileSync(optionsHtmlPath, original);
+}
 
-console.log('✅ Build complete — manifest restored to dev mode');
+console.log('✅ Build complete — options.html restored to dev mode');

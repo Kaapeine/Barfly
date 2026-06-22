@@ -43,17 +43,20 @@ let currentStep = 0;
 // ---------------------------------------------------------------------------
 
 async function loadSettings() {
-  const settings = await api.sendMessage({ type: 'getSettings' });
-  if (!settings) {
-    // Background not ready yet — retry after a short delay
+  // Read state directly from storage (shared across extension contexts)
+  // instead of messaging the background script — avoids racing against
+  // background's own message-handler registration during startup.
+  const stored = await api.getState();
+  if (!stored) {
     setTimeout(loadSettings, 200);
     return;
   }
-  capacityInput.value = settings.capacity;
+  capacityInput.value = stored.capacity;
   await refreshState();
 }
 
 async function refreshState() {
+  if (!stateDisplay) return;
   const stored = await api.getState();
   stateDisplay.textContent = JSON.stringify(stored ?? 'null', null, 2);
 }
@@ -74,123 +77,130 @@ rebuildButton.addEventListener('click', async () => {
   await refreshState();
 });
 
-seedButton.addEventListener('click', async () => {
-  seedButton.disabled = true;
-  seedStatus.textContent = 'Creating bookmarks...';
-  seedStatus.style.color = '#8e8e93';
+// Debug/test tools — only present on the dev options page. Guarded so this
+// shared script also runs unmodified on the release page, which omits them.
+if (seedButton) {
+  seedButton.addEventListener('click', async () => {
+    seedButton.disabled = true;
+    seedStatus.textContent = 'Creating bookmarks...';
+    seedStatus.style.color = '#8e8e93';
 
-  try {
-    const toolbar = await api.getChildren(api.TOOLBAR_ID);
-    for (const b of toolbar) {
-      if (b.type === 'separator') continue;
-      await api.removeBookmark(b.id);
-    }
-
-    const pinned = [
-      { title: 'Gmail', url: 'https://mail.google.com' },
-      { title: 'Calendar', url: 'https://calendar.google.com' },
-      { title: 'Drive', url: 'https://drive.google.com' },
-    ];
-    for (const bm of pinned) {
-      await api.createBookmark({
-        parentId: api.TOOLBAR_ID,
-        title: bm.title,
-        url: bm.url,
-      });
-    }
-
-    const folder = await api.createBookmark({
-      parentId: api.OTHER_ID,
-      title: 'Read Later',
-      type: 'folder',
-    });
-
-    const toVisit = [
-      { title: 'Wikipedia', url: 'https://en.wikipedia.org' },
-      { title: 'GitHub', url: 'https://github.com' },
-      { title: 'MDN', url: 'https://developer.mozilla.org' },
-      { title: 'Hacker News', url: 'https://news.ycombinator.com' },
-      { title: 'Reddit', url: 'https://reddit.com' },
-      { title: 'Lobsters', url: 'https://lobste.rs' },
-      { title: 'Dev.to', url: 'https://dev.to' },
-      { title: 'Stack Overflow', url: 'https://stackoverflow.com' },
-      { title: 'CSS Tricks', url: 'https://css-tricks.com' },
-      { title: 'YouTube', url: 'https://youtube.com' },
-    ];
-
-    for (const bm of toVisit) {
-      await api.createBookmark({
-        parentId: folder.id,
-        title: bm.title,
-        url: bm.url,
-      });
-    }
-
-    await api.clearStorage();
-    await refreshState();
-
-    seedStatus.textContent = `✅ Created ${pinned.length} pinned + ${toVisit.length} bookmarks. Reload BarFly (about:debugging → Reload) to see the separator.`;
-    seedStatus.style.color = '#34c759';
-  } catch (err) {
-    seedStatus.textContent = `Error: ${err.message}`;
-    seedStatus.style.color = '#ff3b30';
-  } finally {
-    seedButton.disabled = false;
-  }
-});
-
-resetButton.addEventListener('click', async () => {
-  resetButton.disabled = true;
-  try {
-    await api.clearStorage();
-    await refreshState();
-    seedStatus.textContent =
-      '✅ BarFly state cleared. Reload the extension (about:debugging → Reload) for a fresh start.';
-    seedStatus.style.color = '#34c759';
-  } catch (err) {
-    seedStatus.textContent = `Error: ${err.message}`;
-    seedStatus.style.color = '#ff3b30';
-  } finally {
-    resetButton.disabled = false;
-  }
-});
-
-clearAllButton.addEventListener('click', async () => {
-  if (!confirm('Delete ALL bookmarks? This cannot be undone.')) return;
-  clearAllButton.disabled = true;
-  seedStatus.textContent = 'Deleting all bookmarks...';
-  seedStatus.style.color = '#8e8e93';
-
-  try {
-    const tree = await api.getFullTree();
-    const roots = tree[0]?.children ?? [];
-    for (const root of roots) {
-      for (const child of root.children ?? []) {
-        await api.removeTree(child.id);
+    try {
+      const toolbar = await api.getChildren(api.TOOLBAR_ID);
+      for (const b of toolbar) {
+        if (b.type === 'separator') continue;
+        await api.removeBookmark(b.id);
       }
+
+      const pinned = [
+        { title: 'Gmail', url: 'https://mail.google.com' },
+        { title: 'Calendar', url: 'https://calendar.google.com' },
+        { title: 'Drive', url: 'https://drive.google.com' },
+      ];
+      for (const bm of pinned) {
+        await api.createBookmark({
+          parentId: api.TOOLBAR_ID,
+          title: bm.title,
+          url: bm.url,
+        });
+      }
+
+      const folder = await api.createBookmark({
+        parentId: api.OTHER_ID,
+        title: 'Read Later',
+        type: 'folder',
+      });
+
+      const toVisit = [
+        { title: 'Wikipedia', url: 'https://en.wikipedia.org' },
+        { title: 'GitHub', url: 'https://github.com' },
+        { title: 'MDN', url: 'https://developer.mozilla.org' },
+        { title: 'Hacker News', url: 'https://news.ycombinator.com' },
+        { title: 'Reddit', url: 'https://reddit.com' },
+        { title: 'Lobsters', url: 'https://lobste.rs' },
+        { title: 'Dev.to', url: 'https://dev.to' },
+        { title: 'Stack Overflow', url: 'https://stackoverflow.com' },
+        { title: 'CSS Tricks', url: 'https://css-tricks.com' },
+        { title: 'YouTube', url: 'https://youtube.com' },
+      ];
+
+      for (const bm of toVisit) {
+        await api.createBookmark({
+          parentId: folder.id,
+          title: bm.title,
+          url: bm.url,
+        });
+      }
+
+      await api.clearStorage();
+      await refreshState();
+
+      seedStatus.textContent = `✅ Created ${pinned.length} pinned + ${toVisit.length} bookmarks. Reload BarFly (about:debugging → Reload) to see the separator.`;
+      seedStatus.style.color = '#34c759';
+    } catch (err) {
+      seedStatus.textContent = `Error: ${err.message}`;
+      seedStatus.style.color = '#ff3b30';
+    } finally {
+      seedButton.disabled = false;
     }
-    await api.clearStorage();
-    await refreshState();
-    seedStatus.textContent =
-      '✅ All bookmarks deleted. Reload BarFly for a clean start.';
-    seedStatus.style.color = '#34c759';
-  } catch (err) {
-    seedStatus.textContent = `Error: ${err.message}`;
-    seedStatus.style.color = '#ff3b30';
-  } finally {
-    clearAllButton.disabled = false;
-  }
-});
+  });
+}
+
+if (resetButton) {
+  resetButton.addEventListener('click', async () => {
+    resetButton.disabled = true;
+    try {
+      await api.clearStorage();
+      await refreshState();
+      seedStatus.textContent =
+        '✅ BarFly state cleared. Reload the extension (about:debugging → Reload) for a fresh start.';
+      seedStatus.style.color = '#34c759';
+    } catch (err) {
+      seedStatus.textContent = `Error: ${err.message}`;
+      seedStatus.style.color = '#ff3b30';
+    } finally {
+      resetButton.disabled = false;
+    }
+  });
+}
+
+if (clearAllButton) {
+  clearAllButton.addEventListener('click', async () => {
+    if (!confirm('Delete ALL bookmarks? This cannot be undone.')) return;
+    clearAllButton.disabled = true;
+    seedStatus.textContent = 'Deleting all bookmarks...';
+    seedStatus.style.color = '#8e8e93';
+
+    try {
+      const tree = await api.getFullTree();
+      const roots = tree[0]?.children ?? [];
+      for (const root of roots) {
+        for (const child of root.children ?? []) {
+          await api.removeTree(child.id);
+        }
+      }
+      await api.clearStorage();
+      await refreshState();
+      seedStatus.textContent =
+        '✅ All bookmarks deleted. Reload BarFly for a clean start.';
+      seedStatus.style.color = '#34c759';
+    } catch (err) {
+      seedStatus.textContent = `Error: ${err.message}`;
+      seedStatus.style.color = '#ff3b30';
+    } finally {
+      clearAllButton.disabled = false;
+    }
+  });
+}
 
 pauseToggle.addEventListener('change', async () => {
   await api.sendMessage({
     type: 'setPaused',
     paused: pauseToggle.checked,
   });
-  seedStatus.textContent = pauseToggle.checked
+  status.textContent = pauseToggle.checked
     ? '⏸️ Event handlers paused.'
     : '▶️ Event handlers active.';
-  seedStatus.style.color = '#8e8e93';
 });
 
 // ---------------------------------------------------------------------------

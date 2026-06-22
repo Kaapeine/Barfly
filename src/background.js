@@ -15,7 +15,7 @@ api.onInstalled(async ({ reason }) => {
   if (reason === 'install') {
     const setupComplete = await api.getSetupComplete();
     if (!setupComplete) {
-      await api.openTab('src/options/release/options.html');
+      await api.openTab('src/options/options.html');
     }
   }
 });
@@ -126,7 +126,7 @@ function registerMessageHandlers() {
 
 async function enterSetupMode() {
   // Open the wizard tab
-  await api.openTab('src/options/release/options.html');
+  await api.openTab('src/options/options.html');
 
   api.onMessage((message) => {
     if (message.type !== 'setupComplete') return undefined;
