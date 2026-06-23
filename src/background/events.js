@@ -250,42 +250,56 @@ export async function handleBookmarkRemoved(api, state, id, removeInfo) {
     return { ...state, separatorId: separator.id };
   }
 
-  // Firefox fires a *single* onRemoved for the top of a removed subtree and
-  // none for its contents. Deleting a folder full of tracked originals must
-  // therefore clean up every duplicate whose original lived inside it — walk
-  // the removed subtree, not just the top id. (For a plain bookmark removal
-  // the subtree is just the node itself.)
-  const removedIds = removeInfo?.node ? collectSubtreeIds(removeInfo.node) : [id];
+  let entries = [...state.entries];
 
-  const entries = [...state.entries];
-  for (const removedId of removedIds) {
-    const entryIdx = entries.findIndex(
-      (e) => e.originalId === removedId || e.duplicateId === removedId,
-    );
-    if (entryIdx === -1) continue;
-
-    const entry = entries[entryIdx];
+  const directIdx = entries.findIndex(
+    (e) => e.originalId === id || e.duplicateId === id,
+  );
+  if (directIdx !== -1) {
+    const entry = entries[directIdx];
     // If the original was deleted, remove its duplicate from the toolbar.
     // If the duplicate was deleted, leave the original untouched (manual
     // eviction by the user).
-    if (entry.originalId === removedId) {
+    if (entry.originalId === id) {
       const dup = await api.getBookmark(entry.duplicateId);
       if (dup) {
         await api.removeBookmark(entry.duplicateId);
       }
     }
-    entries.splice(entryIdx, 1);
+    entries.splice(directIdx, 1);
   }
 
-  return { ...state, entries };
-}
-
-function collectSubtreeIds(node) {
-  const ids = [node.id];
-  for (const child of node.children ?? []) {
-    ids.push(...collectSubtreeIds(child));
+  // A single bookmark deletion can't hide any other tracked original, so
+  // only a *folder* removal needs the sweep below. removeInfo.node gives us
+  // the removed node's own type for free — use it to skip the sweep (and its
+  // O(n) getBookmark calls) on every plain bookmark deletion, which is the
+  // overwhelmingly common case. If type is missing for any reason, sweep
+  // anyway rather than risk leaving an orphan.
+  const removedType = removeInfo?.node?.type;
+  if (removedType === "bookmark" || removedType === "separator") {
+    return { ...state, entries };
   }
-  return ids;
+
+  // Firefox fires a single onRemoved for the top of a removed subtree, and
+  // removeInfo.node does NOT include the subtree's children — so we can't
+  // enumerate what got deleted from the event itself. Check liveness
+  // directly instead: any tracked original that no longer exists — because
+  // it (or an ancestor folder) was just removed — gets its duplicate
+  // cleaned up.
+  const survivors = [];
+  for (const entry of entries) {
+    const original = await api.getBookmark(entry.originalId);
+    if (!original) {
+      const dup = await api.getBookmark(entry.duplicateId);
+      if (dup) {
+        await api.removeBookmark(entry.duplicateId);
+      }
+      continue;
+    }
+    survivors.push(entry);
+  }
+
+  return { ...state, entries: survivors };
 }
 
 // ---------------------------------------------------------------------------

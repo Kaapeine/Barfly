@@ -18,15 +18,6 @@ export function createFakeBrowserApi() {
     });
   }
 
-  function buildSubtree(id) {
-    const n = nodes.get(id);
-    if (!n) return null;
-    const node = { ...n };
-    const kids = childrenOf(id);
-    if (kids.length) node.children = kids.map((k) => buildSubtree(k.id));
-    return node;
-  }
-
   function deleteSubtree(id) {
     for (const child of childrenOf(id)) deleteSubtree(child.id);
     nodes.delete(id);
@@ -48,13 +39,14 @@ export function createFakeBrowserApi() {
       const node = nodes.get(id);
       if (!node) return;
       // Mirror Firefox: removing a folder fires a SINGLE onRemoved for the
-      // top node (with the whole subtree under removeInfo.node) and none for
-      // its contents. Snapshot the subtree before deleting it.
-      const snapshot = buildSubtree(id);
+      // top node and none for its contents — and removeInfo.node does NOT
+      // include the subtree's children, so callers can't recover what was
+      // inside from the event itself.
+      const { children, ...nodeWithoutChildren } = node;
       deleteSubtree(id);
       reindex(node.parentId);
       listeners.removed.forEach((cb) =>
-        cb(id, { parentId: node.parentId, index: node.index, node: snapshot }),
+        cb(id, { parentId: node.parentId, index: node.index, node: { ...nodeWithoutChildren } }),
       );
     },
 

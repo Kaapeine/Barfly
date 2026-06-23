@@ -455,10 +455,12 @@ describe("handleBookmarkRemoved", () => {
     expect(next).toEqual(state);
   });
 
-  it("removes toolbar duplicates when a folder of originals is deleted (single onRemoved)", async () => {
-    // Firefox fires ONE onRemoved for the folder, with the whole subtree in
-    // removeInfo.node and no events for the contents. Both originals' toolbar
-    // duplicates must be cleaned up rather than left orphaned.
+  it("removes toolbar duplicates when a folder of originals is deleted (single onRemoved, no children data)", async () => {
+    // Firefox fires ONE onRemoved for the folder, and removeInfo.node does NOT
+    // include the subtree's children — the event tells us nothing about what
+    // was inside. Both originals' toolbar duplicates must still be cleaned up,
+    // detected via liveness rather than by walking subtree data Firefox never
+    // provides.
     const api = createFakeBrowserApi();
     const folder = await api.createBookmark({ parentId: OTHER_ID, title: "Work", type: "folder" });
     const a = await api.createBookmark({ parentId: folder.id, title: "A", url: "https://a.test" });
@@ -474,12 +476,9 @@ describe("handleBookmarkRemoved", () => {
       ],
     };
 
-    // Capture the subtree the way Firefox delivers it, then delete the folder.
-    let removeInfo;
-    api.onBookmarkRemoved((id, info) => { if (id === folder.id) removeInfo = info; });
     await api.removeBookmark(folder.id);
 
-    const next = await handleBookmarkRemoved(api, state, folder.id, removeInfo);
+    const next = await handleBookmarkRemoved(api, state, folder.id);
 
     expect(next.entries).toEqual([]);
     expect(await api.getBookmark(dupA.id)).toBeNull();
