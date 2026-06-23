@@ -41,11 +41,16 @@ async function addToDynamic(api, state, original) {
   const newEntry = { originalId: original.id, duplicateId: duplicate.id };
   const entries = [newEntry, ...state.entries];
 
-  // Prune if over capacity
+  // Prune if over capacity. Only ever evict a *tracked* duplicate — never a
+  // bookmark that merely happens to sit in the dynamic region. During a
+  // multi-item drag the browser drops every dragged bookmark onto the toolbar
+  // before firing the per-item events; siblings not yet processed sit there
+  // bare and untracked, and removeBookmark would delete them permanently.
   const dynChildren = await api.getChildren(TOOLBAR_ID);
-  const dynamicDups = dynChildren.filter((c, i) => i > separatorIndex);
-  if (dynamicDups.length > state.capacity) {
-    const tail = dynamicDups[dynamicDups.length - 1];
+  const dupIds = new Set(entries.map((e) => e.duplicateId));
+  const trackedDups = dynChildren.filter((c, i) => i > separatorIndex && dupIds.has(c.id));
+  if (trackedDups.length > state.capacity) {
+    const tail = trackedDups[trackedDups.length - 1];
     await api.removeBookmark(tail.id);
     const tailEntryIdx = entries.findIndex((e) => e.duplicateId === tail.id);
     if (tailEntryIdx !== -1) entries.splice(tailEntryIdx, 1);
@@ -81,7 +86,6 @@ export async function rebuildFromToolbar(api, state) {
   }
 
   const entries = [];
-  const missingOrigins = [];
 
   for (let i = 0; i < children.length; i++) {
     if (i === separatorIndex) continue;
@@ -93,13 +97,22 @@ export async function rebuildFromToolbar(api, state) {
     if (nonDuplicate) {
       entries.push({ originalId: nonDuplicate.id, duplicateId: child.id });
     } else {
-      missingOrigins.push(child.id);
+      // Orphan: a toolbar bookmark with no original anywhere. This is
+      // ambiguous — the user may have added it directly while BarFly was
+      // disabled, or deleted its original. Deleting would be irreversible
+      // data loss, so adopt it instead: leave the toolbar node exactly where
+      // it sits (preserving pinned/dynamic position) and create a backing
+      // original in the dedicated folder, tracking the toolbar node as its
+      // duplicate. `api` must be the tracking wrapper so this create's echo
+      // is suppressed rather than spawning a second duplicate.
+      const folderId = await getOrCreateSavedToolbarFolder(api);
+      const original = await api.createBookmark({
+        parentId: folderId,
+        title: child.title,
+        url: child.url,
+      });
+      entries.push({ originalId: original.id, duplicateId: child.id });
     }
-  }
-
-  // Remove toolbar children whose original can't be found (orphans)
-  for (const id of missingOrigins) {
-    await api.removeBookmark(id);
   }
 
   return { entries, state };
@@ -178,8 +191,16 @@ export async function handleBookmarkMoved(api, state, id, moveInfo) {
   if (!entry) {
     // Untracked item dragged onto toolbar — relocate back, then duplicate
     if (moveInfo.oldParentId && moveInfo.oldParentId !== TOOLBAR_ID) {
-      await api.moveBookmark(id, { parentId: moveInfo.oldParentId, index: moveInfo.oldIndex });
       const bookmark = await api.getBookmark(id);
+      // Only bookmarks get duplicated. A folder or separator dragged onto the
+      // toolbar isn't a duplicate of anything — leave it where the user
+      // dropped it (duplicating it would create a junk url-less node).
+      if (!bookmark || bookmark.type !== 'bookmark') return state;
+      await api.moveBookmark(id, { parentId: moveInfo.oldParentId, index: moveInfo.oldIndex });
+      // The dragged bookmark may itself be the *original* of an existing
+      // entry (its duplicate already sitting elsewhere on the toolbar,
+      // pinned or dynamic). It's already represented — don't double it up.
+      if (state.entries.some((e) => e.originalId === id)) return state;
       return addToDynamic(api, state, bookmark);
     }
     return state;
@@ -211,7 +232,7 @@ export async function handleBookmarkChanged(api, state, id, changeInfo) {
 // 4e continued: Handle bookmark removed (delete sync)
 // ---------------------------------------------------------------------------
 
-export async function handleBookmarkRemoved(api, state, id) {
+export async function handleBookmarkRemoved(api, state, id, removeInfo) {
   // Separator deleted — recreate it at index 0 and notify the user
   if (id === state.separatorId) {
     const separator = await api.createBookmark({
@@ -229,24 +250,42 @@ export async function handleBookmarkRemoved(api, state, id) {
     return { ...state, separatorId: separator.id };
   }
 
-  const entryIdx = state.entries.findIndex((e) => e.originalId === id || e.duplicateId === id);
-  if (entryIdx === -1) return state;
-
-  const entry = state.entries[entryIdx];
-
-  // If the original was deleted, remove its duplicate from the toolbar
-  if (entry.originalId === id) {
-    const dup = await api.getBookmark(entry.duplicateId);
-    if (dup) {
-      await api.removeBookmark(entry.duplicateId);
-    }
-  }
-  // If the duplicate was deleted, leave the original untouched
-  // (manual eviction by the user)
+  // Firefox fires a *single* onRemoved for the top of a removed subtree and
+  // none for its contents. Deleting a folder full of tracked originals must
+  // therefore clean up every duplicate whose original lived inside it — walk
+  // the removed subtree, not just the top id. (For a plain bookmark removal
+  // the subtree is just the node itself.)
+  const removedIds = removeInfo?.node ? collectSubtreeIds(removeInfo.node) : [id];
 
   const entries = [...state.entries];
-  entries.splice(entryIdx, 1);
+  for (const removedId of removedIds) {
+    const entryIdx = entries.findIndex(
+      (e) => e.originalId === removedId || e.duplicateId === removedId,
+    );
+    if (entryIdx === -1) continue;
+
+    const entry = entries[entryIdx];
+    // If the original was deleted, remove its duplicate from the toolbar.
+    // If the duplicate was deleted, leave the original untouched (manual
+    // eviction by the user).
+    if (entry.originalId === removedId) {
+      const dup = await api.getBookmark(entry.duplicateId);
+      if (dup) {
+        await api.removeBookmark(entry.duplicateId);
+      }
+    }
+    entries.splice(entryIdx, 1);
+  }
+
   return { ...state, entries };
+}
+
+function collectSubtreeIds(node) {
+  const ids = [node.id];
+  for (const child of node.children ?? []) {
+    ids.push(...collectSubtreeIds(child));
+  }
+  return ids;
 }
 
 // ---------------------------------------------------------------------------

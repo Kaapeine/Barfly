@@ -51,6 +51,30 @@ describe("rebuildFromToolbar", () => {
 
     expect(entries.map((e) => e.duplicateId)).toEqual([dupA.id, dupB.id]);
   });
+
+  it("adopts an orphan toolbar bookmark instead of deleting it", async () => {
+    const api = createFakeBrowserApi();
+    const state = await runInstall(api);
+    // A lone bookmark on the toolbar with no original anywhere (added while
+    // BarFly was disabled, or its original was deleted).
+    const orphan = await api.createBookmark({ parentId: TOOLBAR_ID, index: 1, title: "X", url: "https://x.test" });
+
+    const { entries } = await rebuildFromToolbar(api, state);
+
+    // Orphan kept exactly where it was, now tracked as a duplicate...
+    expect(await api.getBookmark(orphan.id)).not.toBeNull();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].duplicateId).toBe(orphan.id);
+
+    // ...backed by a freshly created original in the dedicated folder.
+    const other = await api.getChildren(OTHER_ID);
+    const saved = other.find((c) => c.type === "folder" && c.title === "Saved to Bookmarks Toolbar");
+    expect(saved).toBeDefined();
+    const savedChildren = await api.getChildren(saved.id);
+    const original = savedChildren.find((c) => c.url === "https://x.test");
+    expect(original).toBeDefined();
+    expect(entries[0].originalId).toBe(original.id);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -237,6 +261,32 @@ describe("handleBookmarkMoved", () => {
     expect(next.entries[0].originalId).toBe(orig.id);
   });
 
+  it("does not create a second duplicate when the dragged bookmark is itself an already-tracked original", async () => {
+    const api = createFakeBrowserApi();
+    const state = await runInstall(api);
+    const orig = await api.createBookmark({ parentId: "folder", title: "A", url: "https://a.test" });
+    // Existing duplicate is pinned (before the separator).
+    const dup = await api.createBookmark({ parentId: TOOLBAR_ID, index: 0, title: "A", url: "https://a.test" });
+    await api.moveBookmark(state.separatorId, { parentId: TOOLBAR_ID, index: 1 });
+    const entries = [{ originalId: orig.id, duplicateId: dup.id }];
+    const current = { ...state, entries };
+
+    // Now drag the original itself onto the toolbar's dynamic section.
+    await api.moveBookmark(orig.id, { parentId: TOOLBAR_ID, index: 2 });
+
+    const next = await handleBookmarkMoved(api, current, orig.id, {
+      parentId: TOOLBAR_ID,
+      index: 2,
+      oldParentId: "folder",
+      oldIndex: 0,
+    });
+
+    // Original restored to its folder, no new duplicate created.
+    expect(await api.getChildren("folder")).toEqual([expect.objectContaining({ id: orig.id })]);
+    expect(next.entries).toHaveLength(1);
+    expect(next.entries[0].duplicateId).toBe(dup.id);
+  });
+
   it("detects cross-separator drag: promotes dynamic item to pinned", async () => {
     const api = createFakeBrowserApi();
     const state = await runInstall(api);
@@ -273,6 +323,51 @@ describe("handleBookmarkMoved", () => {
     });
 
     expect(next).toEqual(current);
+  });
+
+  it("does not evict an untracked bare sibling sitting in the dynamic region", async () => {
+    // Mid multi-drag, a not-yet-processed sibling sits bare in the dynamic
+    // region. Adding a duplicate over capacity must evict a *tracked* dup,
+    // never the bare sibling (which removeBookmark would delete for good).
+    const api = createFakeBrowserApi();
+    const state = { ...(await runInstall(api)), capacity: 1 };
+    const trackedOrig = await api.createBookmark({ parentId: "folder", title: "T", url: "https://t.test" });
+    const trackedDup = await api.createBookmark({ parentId: TOOLBAR_ID, index: 1, title: "T", url: "https://t.test" });
+    // Bare untracked sibling parked at the tail of the dynamic region.
+    const bare = await api.createBookmark({ parentId: TOOLBAR_ID, index: 2, title: "Bare", url: "https://bare.test" });
+    const current = { ...state, entries: [{ originalId: trackedOrig.id, duplicateId: trackedDup.id }] };
+
+    // Drag a fresh original A onto the toolbar — triggers add + capacity prune.
+    const a = await api.createBookmark({ parentId: "folder", title: "A", url: "https://a.test" });
+    await api.moveBookmark(a.id, { parentId: TOOLBAR_ID, index: 1 });
+    await handleBookmarkMoved(api, current, a.id, {
+      parentId: TOOLBAR_ID,
+      index: 1,
+      oldParentId: "folder",
+      oldIndex: 0,
+    });
+
+    // The bare sibling must survive; only a tracked duplicate may be evicted.
+    expect(await api.getBookmark(bare.id)).not.toBeNull();
+  });
+
+  it("does not duplicate a folder dragged onto the toolbar", async () => {
+    const api = createFakeBrowserApi();
+    const state = await runInstall(api);
+    const folder = await api.createBookmark({ parentId: OTHER_ID, title: "MyFolder", type: "folder" });
+    await api.moveBookmark(folder.id, { parentId: TOOLBAR_ID, index: 1 });
+
+    const next = await handleBookmarkMoved(api, state, folder.id, {
+      parentId: TOOLBAR_ID,
+      index: 1,
+      oldParentId: OTHER_ID,
+      oldIndex: 0,
+    });
+
+    // No entry tracked, and no junk url-less bookmark created on the toolbar.
+    expect(next.entries).toHaveLength(0);
+    const toolbar = await api.getChildren(TOOLBAR_ID);
+    expect(toolbar.filter((c) => c.type === "bookmark" && !c.url)).toHaveLength(0);
   });
 });
 
@@ -358,6 +453,37 @@ describe("handleBookmarkRemoved", () => {
     const next = await handleBookmarkRemoved(api, state, "unknown-id");
 
     expect(next).toEqual(state);
+  });
+
+  it("removes toolbar duplicates when a folder of originals is deleted (single onRemoved)", async () => {
+    // Firefox fires ONE onRemoved for the folder, with the whole subtree in
+    // removeInfo.node and no events for the contents. Both originals' toolbar
+    // duplicates must be cleaned up rather than left orphaned.
+    const api = createFakeBrowserApi();
+    const folder = await api.createBookmark({ parentId: OTHER_ID, title: "Work", type: "folder" });
+    const a = await api.createBookmark({ parentId: folder.id, title: "A", url: "https://a.test" });
+    const b = await api.createBookmark({ parentId: folder.id, title: "B", url: "https://b.test" });
+    const dupA = await api.createBookmark({ parentId: TOOLBAR_ID, title: "A", url: "https://a.test" });
+    const dupB = await api.createBookmark({ parentId: TOOLBAR_ID, title: "B", url: "https://b.test" });
+    const state = {
+      separatorId: "s",
+      capacity: 10,
+      entries: [
+        { originalId: a.id, duplicateId: dupA.id },
+        { originalId: b.id, duplicateId: dupB.id },
+      ],
+    };
+
+    // Capture the subtree the way Firefox delivers it, then delete the folder.
+    let removeInfo;
+    api.onBookmarkRemoved((id, info) => { if (id === folder.id) removeInfo = info; });
+    await api.removeBookmark(folder.id);
+
+    const next = await handleBookmarkRemoved(api, state, folder.id, removeInfo);
+
+    expect(next.entries).toEqual([]);
+    expect(await api.getBookmark(dupA.id)).toBeNull();
+    expect(await api.getBookmark(dupB.id)).toBeNull();
   });
 });
 

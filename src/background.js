@@ -65,7 +65,9 @@ api.onMessage((message) => {
       case 'rebuild': {
         const state = await dispatcher.getState();
         if (!state) return { ok: false };
-        const result = await rebuildFromToolbar(api, state);
+        // tracking api: rebuild may create backing originals while adopting
+        // orphan toolbar bookmarks; their onCreated echoes must be suppressed.
+        const result = await rebuildFromToolbar(dispatcher.trackingApi, state);
         await dispatcher.setState({ ...result.state, entries: result.entries });
         return { ok: true };
       }
@@ -107,7 +109,7 @@ async function init() {
   // sitting bare on the toolbar — not yet split into original+duplicate by
   // the queued handler — and delete it as a false "orphan".
   await dispatcher.queue.enqueue(async () => {
-    const result = await rebuildFromToolbar(api, resolved);
+    const result = await rebuildFromToolbar(dispatcher.trackingApi, resolved);
     await dispatcher.setState({ ...result.state, entries: result.entries });
   });
 }

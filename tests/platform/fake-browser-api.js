@@ -18,6 +18,20 @@ export function createFakeBrowserApi() {
     });
   }
 
+  function buildSubtree(id) {
+    const n = nodes.get(id);
+    if (!n) return null;
+    const node = { ...n };
+    const kids = childrenOf(id);
+    if (kids.length) node.children = kids.map((k) => buildSubtree(k.id));
+    return node;
+  }
+
+  function deleteSubtree(id) {
+    for (const child of childrenOf(id)) deleteSubtree(child.id);
+    nodes.delete(id);
+  }
+
   return {
     async createBookmark({ parentId, index, title, url, type = 'bookmark' }) {
       const id = String(nextId++);
@@ -33,15 +47,14 @@ export function createFakeBrowserApi() {
     async removeBookmark(id) {
       const node = nodes.get(id);
       if (!node) return;
-      if (node.type === 'folder' || node.type === undefined) {
-        for (const child of childrenOf(id)) {
-          await this.removeBookmark(child.id);
-        }
-      }
-      nodes.delete(id);
+      // Mirror Firefox: removing a folder fires a SINGLE onRemoved for the
+      // top node (with the whole subtree under removeInfo.node) and none for
+      // its contents. Snapshot the subtree before deleting it.
+      const snapshot = buildSubtree(id);
+      deleteSubtree(id);
       reindex(node.parentId);
       listeners.removed.forEach((cb) =>
-        cb(id, { parentId: node.parentId, index: node.index }),
+        cb(id, { parentId: node.parentId, index: node.index, node: snapshot }),
       );
     },
 

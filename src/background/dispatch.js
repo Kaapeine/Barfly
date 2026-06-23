@@ -59,7 +59,7 @@ export function createDispatcher(api) {
       run("changed", (state, id, changeInfo) => handleBookmarkChanged(trackingApi, state, id, changeInfo)),
     );
     api.onBookmarkRemoved(
-      run("removed", (state, id) => handleBookmarkRemoved(trackingApi, state, id)),
+      run("removed", (state, id, removeInfo) => handleBookmarkRemoved(trackingApi, state, id, removeInfo)),
     );
   }
 
