@@ -1,5 +1,8 @@
 # BarFly
 
+[![Version](https://img.shields.io/github/package-json/v/Kaapeine/BarFly)](package.json)
+[![License](https://img.shields.io/github/license/Kaapeine/BarFly)](LICENSE)
+
 **Smart bookmarks toolbar - pinned items up front, LRU-cached dynamic items after a separator.**
 
 BarFly is a browser extension that takes over your bookmarks toolbar and shows you the bookmarks you've recently interacted with, LRU-cache style. You keep bookmarking and filing things into folders as you normally do; BarFly keeps the toolbar populated with the bookmarks you've interacted with most recently.
@@ -49,7 +52,7 @@ Bulk bookmark operations - importing an HTML bookmarks file, or restoring a full
 
 Requires Firefox 115+.
 
-TBD with store links
+[Get BarFly on addons.mozilla.org](https://addons.mozilla.org/en-US/firefox/addon/barfly/) (not yet public — pending AMO review).
 
 ## Development
 
