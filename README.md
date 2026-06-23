@@ -37,6 +37,7 @@ flowchart TD
   subgraph ServiceWorker[Service worker]
     Init[Init]
     CoreLogic[Core logic]
+    Installation[Installation]
 
     subgraph Dispatcher
       Queue[Queue]
@@ -57,12 +58,10 @@ flowchart TD
   SuppressionTracking --> Storage
   ExpectedSet --> Storage
 
-  Installation[Installation]
-
   Queue -. "getSettings / setPaused" .-> Storage
-  Queue -. "setupComplete (untracked)" .-> Installation
-  Installation --> BookmarkAPI
-  Installation --> Storage
+  Queue -. "Install wizard done" .-> Installation
+  Installation -. "runInstall" .-> BookmarkAPI
+  Installation -. "setupComplete" .-> Storage
 ```
 
 ### Pinned section
